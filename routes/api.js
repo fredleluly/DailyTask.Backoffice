@@ -108,7 +108,6 @@ module.exports = function (pool, upload, helpers) {
 
             req.session.user = { ...tempUser };
             delete req.session.tempUser;
-            req.session.cookie.maxAge = 7 * 24 * 60 * 60 * 1000;
 
             res.json({ success: true, user: req.session.user });
         } catch (err) {
@@ -118,7 +117,7 @@ module.exports = function (pool, upload, helpers) {
     });
 
     router.post('/logout', (req, res) => {
-        req.session.destroy();
+        req.session = null;
         res.json({ success: true });
     });
 

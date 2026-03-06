@@ -4,7 +4,7 @@
  */
 const express = require('express');
 const { Pool } = require('pg');
-const session = require('express-session');
+const cookieSession = require('cookie-session');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
@@ -58,6 +58,9 @@ const poolConfig = {
     database: process.env.DB_NAME,
     password: process.env.DB_PASSWORD,
     port: process.env.DB_PORT,
+    max: parseInt(process.env.DB_POOL_MAX, 10) || 5,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 10000,
 };
 
 // Aktifkan SSL jika ca.pem ada (wajib untuk Aiven Cloud)
@@ -85,23 +88,14 @@ app.use(helmet({
     crossOriginEmbedderPolicy: false
 }));
 
-const pgSession = require('connect-pg-simple')(session);
-
-// Session
-app.use(session({
-    store: new pgSession({
-        pool: pool,
-        tableName: 'session' // pastikan tabel session sudah dibuat di database
-    }),
+// Session: cookie-session (works on Vercel/serverless, no DB/Redis needed, no connect-pg-simple)
+app.use(cookieSession({
+    name: 'session',
     secret: process.env.SESSION_SECRET || 'dailytracker_secret_v2_2026',
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax'
-    }
+    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax'
 }));
 
 // Audit log middleware
@@ -477,9 +471,6 @@ app.post('/verify-mfa', mfaLimiter, async (req, res) => {
 
             delete req.session.tempUser;
 
-            // Set session maxAge to 7 days
-            req.session.cookie.maxAge = 7 * 24 * 60 * 60 * 1000;
-
             if (tempUser.isDirector) {
                 return res.redirect('/director/dashboard');
             } else {
@@ -501,8 +492,8 @@ app.post('/verify-mfa', mfaLimiter, async (req, res) => {
 
 // ── LOGOUT ─────────────────────────────────────────────────────────────────────
 app.get('/logout', (req, res) => {
-    const wasDirector = req.session.user?.isDirector;
-    req.session.destroy();
+    const wasDirector = req.session?.user?.isDirector;
+    req.session = null;
     res.redirect(wasDirector ? '/director/login' : '/login');
 });
 
@@ -2835,6 +2826,7 @@ app.use((req, res) => {
 
 app.use((err, req, res, next) => {
     console.error(err.stack);
+    if (res.headersSent) return;
     res.status(500).render('500', { user: req.session?.user || null, error: err.message });
 });
 

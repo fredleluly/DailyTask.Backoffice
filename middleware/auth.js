@@ -35,9 +35,20 @@ const authorize = (...roles) => {
             return res.redirect('/login');
         }
         const userRole = req.session.user.role_name;
+        console.log("****************==",req.session.user);
+        console.log("****************==","NEEDS :", roles);
         if (roles.includes(userRole)) {
             return next();
         }
+        // Log akses ditolak untuk debugging
+        console.warn('[AUTH DENIED]', {
+            path: req.path,
+            method: req.method,
+            userId: req.session.user.id,
+            userRole,
+            requiredRoles: roles,
+            reason: `User role "${userRole}" not in allowed roles [${roles.join(', ')}]`
+        });
         if (req.xhr || req.headers.accept?.indexOf('json') > -1) {
             return res.status(403).json({ success: false, message: 'Akses Ditolak' });
         }
@@ -88,6 +99,15 @@ const authorizeDirector = (...roles) => {
         if (roles.includes(userRole)) {
             return next();
         }
+        // Log akses ditolak untuk debugging
+        console.warn('[AUTH DENIED - DIRECTOR]', {
+            path: req.path,
+            method: req.method,
+            userId: req.session.user.id,
+            userRole,
+            requiredRoles: roles,
+            reason: `Director role "${userRole}" not in allowed roles [${roles.join(', ')}]`
+        });
         return res.status(403).render('500', {
             user: req.session.user,
             error: 'Akses Ditolak: Anda tidak memiliki izin untuk halaman ini.'
